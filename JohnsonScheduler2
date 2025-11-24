@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Process Optimizer DX</title>
+<style>
+  /* ----- ベーシック CSS ----- */
+  :root{
+    --bg:#f4f6f8;
+    --card:#ffffff;
+    --accent:#0052cc; /* コンサルっぽい信頼感のある青 */
+    --accent-dark:#0747a6;
+    --success:#36b37e; /* 改善成功色 */
+    --danger:#ff5630;
+    --muted:#6b778c;
+    --line:#dfe1e6;
+    --radius:4px; /* 角丸を少し鋭角にしてプロっぽく */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  html,body{height:100%; margin:0; background:var(--bg); color:#172b4d;}
+  .container{
+    max-width:1000px;
+    margin:28px auto;
+    padding:20px;
+  }
+  header{margin-bottom:20px;}
+  header h1{margin:0; font-size:24px; color:#172b4d;}
+  header p{margin:4px 0 0; color:var(--muted); font-size:14px;}
+  
+  .card{
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    margin-bottom:16px;
+  }
+
+  /* tabs */
+  .tabs{display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--line); padding-bottom:8px;}
+  .tab{
+    padding:8px 16px; border-radius:3px; cursor:pointer; font-weight:500; font-size:14px;
+    background:transparent; color:var(--muted);
+  }
+  .tab.active{
+    background:#deebff; color:var(--accent); 
+  }
+
+  /* forms */
+  textarea{
+    width:100%; min-height:120px; resize:vertical;
+    padding:12px; border-radius:3px; border:1px solid var(--line);
+    font-family: monospace; font-size:14px; box-sizing: border-box;
+  }
+  label.small{display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;}
+
+  .controls{display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap;}
+  button{
+    background:var(--accent); color:white; border:0; padding:10px 16px;
+    border-radius:3px; cursor:pointer; font-weight:600; transition:0.2s;
+  }
+  button:hover{background:var(--accent-dark);}
+  button.ghost{
+    background:transparent; color:var(--muted); border:1px solid var(--line);
+  }
+  button.ghost:hover{background:#f4f5f7; color:#172b4d;}
+  
+  input[type="number"], input[type="text"]{
+    padding:8px; border-radius:3px; border:1px solid var(--line);
+  }
+
+  /* table input */
+  table.input-table{width:100%; border-collapse:collapse; margin-top:8px;}
+  table.input-table th{background:#f4f5f7; color:var(--muted); font-size:12px; text-align:left; padding:8px;}
+  table.input-table td{border-bottom:1px solid var(--line); padding:8px;}
+  .small-btn{padding:4px 8px; font-size:12px; background:#dfe1e6; color:#172b4d;}
+  .small-btn:hover{background:#c1c7d0;}
+
+  /* --- KPI Dashboard (NEW!) --- */
+  .kpi-board{
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap:16px; margin-bottom:20px;
+  }
+  .kpi-card{
+    background:#f4f5f7; padding:16px; border-radius:4px; border-left:4px solid var(--muted);
+  }
+  .kpi-card.success{ background:#e3fcef; border-left-color:var(--success); }
+  .kpi-card h3{ margin:0 0 4px; font-size:12px; color:var(--muted); text-transform:uppercase;}
+  .kpi-card .value{ font-size:24px; font-weight:700; color:#172b4d; }
+  .kpi-card .sub{ font-size:12px; color:var(--muted); }
+  .badge{
+    display:inline-block; padding:2px 6px; border-radius:3px; 
+    font-size:11px; font-weight:bold; vertical-align:middle; margin-left:8px;
+  }
+  .badge-green{background:var(--success); color:white;}
+
+  /* results */
+  .sequence{font-weight:600; margin-bottom:12px; padding:10px; background:#e3fcef; border-radius:3px; color:#006644;}
+  #gantt-wrap{margin-top:12px; border-radius:4px; padding:16px; background:#ffffff; border:1px solid var(--line);}
+  canvas#gantt{width:100%; height:280px; display:block;}
+
+  /* table result */
+  .res-table{width:100%; border-collapse:collapse; font-size:13px;}
+  .res-table th{border-bottom:2px solid var(--line); padding:8px; text-align:left; color:var(--muted);}
+  .res-table td{border-bottom:1px solid var(--line); padding:8px;}
+
+  @media(max-width:720px){
+    .flex{flex-direction:column;}
+    input[type="number"]{width:100%;}
+    button{width:100%;}
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      <h1>Production Scheduler DX</h1>
+      <p>2工程フローショップ型 生産スケジューリング最適化システム (Johnson's Algorithm)</p>
+    </header>
+
+    <div class="card">
+      <div class="tabs" role="tablist">
+        <div class="tab active" id="tab-text">CSV一括入力</div>
+        <div class="tab" id="tab-table">テーブル編集</div>
+      </div>
+
+      <div id="panel-text">
+        <label class="small">データ入力 (形式: ロット名, 第1工程時間, 第2工程時間)</label>
+        <textarea id="text-input" placeholder="例：&#10;Lot-A, 30, 100&#10;Lot-B, 70, 40&#10;Lot-C, 50, 90"></textarea>
+        <div class="controls">
+          <button id="parse-text">テーブルに反映</button>
+          <button id="calc-from-text">🚀 最適化を実行</button>
+          <button class="ghost" id="clear-text">クリア</button>
+        </div>
+      </div>
+
+      <div id="panel-table" style="display:none;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+          <label class="small" style="margin:0;">ロット数:</label>
+          <input id="job-count" type="number" min="1" value="5" style="width:60px;" />
+          <button id="gen-rows" class="small-btn">リセット生成</button>
+        </div>
+
+        <div style="overflow:auto;">
+          <table class="input-table" id="job-table">
+            <thead>
+              <tr><th>製造ロット名</th><th>第1工程 (分)</th><th>第2工程 (分)</th><th>操作</th></tr>
+            </thead>
+            <tbody id="job-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="controls">
+          <button id="add-row" class="ghost">+ 行を追加</button>
+          <button id="calc-from-table">🚀 最適化を実行</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card results" id="results-card" style="display:none;">
+      
+      <label class="small">Optimization Impact (改善効果)</label>
+      <div class="kpi-board">
+        <div class="kpi-card">
+          <h3>Before (入力順)</h3>
+          <div class="value" id="kpi-before">0 <span style="font-size:14px">min</span></div>
+          <div class="sub">現状の総所要時間</div>
+        </div>
+        <div class="kpi-card success">
+          <h3>After (最適化)</h3>
+          <div class="value" id="kpi-after">0 <span style="font-size:14px">min</span></div>
+          <div class="sub">最適化後の総所要時間</div>
+        </div>
+        <div class="kpi-card success" style="border-left-color:#0052cc; background:#deebff;">
+          <h3>Value</h3>
+          <div class="value" style="color:#0052cc;">
+            <span id="kpi-saved">0</span> <span style="font-size:14px">min</span>
+            <span class="badge badge-green" id="kpi-pct">0% CUT</span>
+          </div>
+          <div class="sub">短縮時間 / 生産性向上率</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <label class="small">Recommended Sequence</label>
+        <div class="sequence">推奨投入順序： <span id="sequence-text"></span></div>
+      </div>
+
+      <div class="section">
+        <label class="small">Production Schedule (Gantt Chart)</label>
+        <div id="gantt-wrap">
+          <canvas id="gantt"></canvas>
+        </div>
+      </div>
+
+      <div class="section" style="margin-top:20px;">
+        <label class="small">Detailed Schedule</label>
+        <div id="schedule-area" style="overflow:auto; max-height:300px;"></div>
+      </div>
+
+      <div style="margin-top:20px; border-top:1px solid var(--line); padding-top:16px;">
+        <button id="download-csv" class="ghost">CSVレポートを出力</button>
+        <button class="ghost" id="clear-results" style="float:right;">閉じる</button>
+      </div>
+    </div>
+
+    <footer style="margin-top:20px; text-align:center; color:var(--muted); font-size:12px;">
+      Johnson's Algorithm Scheduler | 2-Stage Flow Shop Problem Solver
+    </footer>
+  </div>
+
+<script>
+/* ----------------------
+   JohnsonScheduler - Business Edition
+   ---------------------- */
+const $ = id => document.getElementById(id);
+
+/* ----- タブ制御 ----- */
+const tabText = $('tab-text'), tabTable = $('tab-table');
+const panelText = $('panel-text'), panelTable = $('panel-table');
+tabText.addEventListener('click', ()=> {
+  tabText.classList.add('active'); tabTable.classList.remove('active');
+  panelText.style.display='block'; panelTable.style.display='none';
+});
+tabTable.addEventListener('click', ()=> {
+  tabTable.classList.add('active'); tabText.classList.remove('active');
+  panelTable.style.display='block'; panelText.style.display='none';
+});
+
+/* ----- テーブル操作 ----- */
+const jobTbody = $('job-tbody');
+function makeRow(jobName='', m1=0, m2=0){
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input class="job-name" type="text" value="${jobName}" style="width:100%;" /></td>
+    <td><input class="m1" type="number" min="0" value="${m1}" style="width:80px;" /></td>
+    <td><input class="m2" type="number" min="0" value="${m2}" style="width:80px;" /></td>
+    <td><button class="remove small-btn">×</button></td>
+  `;
+  tr.querySelector('.remove').addEventListener('click', ()=> tr.remove());
+  return tr;
+}
+function genRows(count){
+  jobTbody.innerHTML='';
+  for(let i=0;i<count;i++){
+    jobTbody.appendChild(makeRow(`Lot-${String.fromCharCode(65+i)}`, (i+1)*10+Math.floor(Math.random()*20), Math.floor(Math.random()*50)+10));
+  }
+}
+genRows(5); // 初期表示
+
+$('gen-rows').addEventListener('click', ()=>{
+  const n = parseInt($('job-count').value) || 0;
+  if(n<1) return;
+  genRows(n);
+});
+$('add-row').addEventListener('click', ()=> {
+  jobTbody.appendChild(makeRow(`Lot-NEW`, 10, 10));
+});
+
+/* ----- テキスト入力パース ----- */
+$('clear-text').addEventListener('click', ()=> { $('text-input').value=''; });
+$('parse-text').addEventListener('click', ()=> {
+  const text = $('text-input').value.trim();
+  if(!text){ alert('入力が空です'); return; }
+  try{
+    const jobs = parseTextData(text);
+    jobTbody.innerHTML='';
+    jobs.forEach(r=> jobTbody.appendChild(makeRow(r.name, r.m1, r.m2)));
+    tabTable.click(); 
+  }catch(e){ alert(e.message); }
+});
+
+function parseTextData(raw){
+  const lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(l=>l && !l.startsWith('#'));
+  const rows = [];
+  lines.forEach((l,i) => {
+    const parts = l.split(/[, \t]+/).map(p=>p.trim()).filter(Boolean);
+    if(parts.length < 2) throw new Error(`行${i+1}: データ形式が不正です`);
+    const name = parts[0];
+    const m1 = Number(parts[1]);
+    const m2 = Number(parts[2] || 0); // 省略時は0
+    if(isNaN(m1)||isNaN(m2)) throw new Error(`行${i+1}: 数値変換エラー`);
+    rows.push({id:i, name, m1, m2});
+  });
+  return rows;
+}
+function readTableData(){
+  const rows = [];
+  Array.from(jobTbody.children).forEach((tr,i)=>{
+    const name = tr.querySelector('.job-name').value || `Lot-${i+1}`;
+    const m1 = Number(tr.querySelector('.m1').value);
+    const m2 = Number(tr.querySelector('.m2').value);
+    rows.push({id:i, name, m1, m2});
+  });
+  if(rows.length===0) throw new Error("データがありません");
+  return rows;
+}
+
+/* ----- アルゴリズム & 計算 ----- */
+// Johnson's Algorithm
+function johnson(jobs){
+  const left = [], right = [];
+  const list = jobs.map(j => ({...j})); // copy
+  // sort logic is usually: find min(m1,m2), if m1<m2 -> left, else -> right
+  // But strictly: find global min in remaining list
+  // Simplified implementation for 2 machines:
+  // Item j goes earlier if min(m1_j, m2_k) < min(m1_k, m2_j) ... classic Johnson logic:
+  // Group 1: m1 < m2 (sort increasing m1)
+  // Group 2: m1 >= m2 (sort decreasing m2)
+  const g1 = list.filter(j => j.m1 < j.m2).sort((a,b) => a.m1 - b.m1);
+  const g2 = list.filter(j => j.m1 >= j.m2).sort((a,b) => b.m2 - a.m2);
+  return [...g1, ...g2];
+}
+
+// Makespan Calculator
+function calcSchedule(sequence){
+  const schedule = [];
+  let t1 = 0, t2 = 0;
+  for(const job of sequence){
+    const m1s = t1;
+    const m1e = m1s + job.m1;
+    const m2s = Math.max(m1e, t2);
+    const m2e = m2s + job.m2;
+    schedule.push({job, m1s, m1e, m2s, m2e});
+    t1 = m1e;
+    t2 = m2e;
+  }
+  const makespan = schedule.length ? schedule[schedule.length-1].m2e : 0;
+  return {schedule, makespan};
+}
+
+/* ----- メイン実行処理 ----- */
+function runCalc(sourceType){
+  try{
+    let jobs = (sourceType==='text') ? parseTextData($('text-input').value) : readTableData();
+    
+    // 1. 現状（入力順）の計算 = Before
+    const beforeRes = calcSchedule(jobs);
+    
+    // 2. 最適化（Johnson法） = After
+    const optSeq = johnson(jobs);
+    const afterRes = calcSchedule(optSeq);
+
+    // 3. 表示更新
+    updateKPI(beforeRes.makespan, afterRes.makespan);
+    $('sequence-text').textContent = optSeq.map(j=>j.name).join(' → ');
+    renderTable(afterRes);
+    drawGantt(afterRes);
+    
+    $('results-card').style.display='block';
+    // scroll to results
+    $('results-card').scrollIntoView({behavior:'smooth'});
+    
+    window._lastSchedule = afterRes; // for csv download
+
+  }catch(e){ alert(e.message); }
+}
+
+$('calc-from-text').addEventListener('click', ()=> runCalc('text'));
+$('calc-from-table').addEventListener('click', ()=> runCalc('table'));
+$('clear-results').addEventListener('click', ()=> $('results-card').style.display='none');
+
+/* ----- KPI表示 ----- */
+function updateKPI(before, after){
+  $('kpi-before').textContent = before;
+  $('kpi-after').textContent = after;
+  
+  const saved = before - after;
+  const pct = before > 0 ? ((saved / before) * 100).toFixed(1) : 0;
+  
+  $('kpi-saved').textContent = saved > 0 ? `-${saved}` : '0';
+  $('kpi-pct').textContent = `${pct}% EFFICIENCY`;
+  
+  // 色変え
+  const kpiCard = $('kpi-saved').closest('.kpi-card');
+  if(saved > 0){
+    $('kpi-pct').style.background = 'var(--success)';
+  } else {
+    $('kpi-pct').style.background = 'var(--muted)';
+    $('kpi-pct').textContent = 'OPTIMIZED';
+  }
+}
+
+/* ----- 描画系 ----- */
+function renderTable(res){
+  let html = '<table class="res-table"><thead><tr><th>ロット名</th><th>第1工程(開始-終了)</th><th>第2工程(開始-終了)</th></tr></thead><tbody>';
+  res.schedule.forEach(r => {
+    html += `<tr>
+      <td>${r.job.name}</td>
+      <td>${r.m1s} - ${r.m1e}</td>
+      <td>${r.m2s} - ${r.m2e}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  $('schedule-area').innerHTML = html;
+}
+
+function drawGantt(res){
+  const canvas = $('gantt');
+  const dpr = window.devicePixelRatio || 1;
+  const wrap = $('gantt-wrap');
+  const w = wrap.clientWidth;
+  const h = 200;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  canvas.style.width = w+'px'; canvas.style.height = h+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  
+  const makespan = res.makespan || 1;
+  const scale = (w - 40) / makespan;
+  const padding = 20;
+  const barH = 40;
+  
+  // grid
+  ctx.fillStyle = '#f4f5f7';
+  ctx.fillRect(0,0,w,h);
+  
+  // labels
+  ctx.fillStyle = '#172b4d';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText('第1工程', 0, 45);
+  ctx.fillText('第2工程', 0, 105);
+  
+  res.schedule.forEach((r, i) => {
+    const hue = (i * 137.5) % 360; 
+    const color = `hsl(${hue}, 60%, 50%)`;
+    
+    // m1
+    ctx.fillStyle = color;
+    ctx.fillRect(padding + r.m1s*scale, 20, (r.m1e - r.m1s)*scale - 1, barH);
+    // m2
+    ctx.fillRect(padding + r.m2s*scale, 80, (r.m2e - r.m2s)*scale - 1, barH);
+    
+    // text
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px sans-serif';
+    if((r.m1e-r.m1s)*scale > 20) ctx.fillText(r.job.name, padding + r.m1s*scale + 2, 45);
+    if((r.m2e-r.m2s)*scale > 20) ctx.fillText(r.job.name, padding + r.m2s*scale + 2, 105);
+  });
+  
+  // axis
+  ctx.fillStyle = '#6b778c';
+  ctx.fillText(`0`, padding, 150);
+  ctx.fillText(`${makespan} min`, padding + makespan*scale - 20, 150);
+}
+
+/* ----- CSV Export ----- */
+$('download-csv').addEventListener('click', ()=>{
+  if(!window._lastSchedule) return;
+  const h = ['LotID','Machine1_Start','Machine1_End','Machine2_Start','Machine2_End'];
+  const body = window._lastSchedule.schedule.map(r => [
+    r.job.name, r.m1s, r.m1e, r.m2s, r.m2e
+  ].join(',')).join('\n');
+  const blob = new Blob([h.join(',')+'\n'+body], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'production_schedule_optimized.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+
+// init example
+$('text-input').value = 'Lot-A, 30, 10\nLot-B, 15, 40\nLot-C, 20, 20\nLot-D, 50, 30';
+
+</script>
+</body>
+</html>
